@@ -22,15 +22,15 @@ except Exception as e:
     db = None
 
 # --- פונקציה לשמירת כתבה ---
-def save_article(article: dict):
+def save_article_to_firestore(article: dict):
     if not db:
         print("⚠️ Firestore client unavailable, skipping save.")
         return
     try:
         db.collection("articles").document(article["id"]).set(article)
-        print(f"✅ Article saved: {article['id']}")
+        print(f"✅ Article saved to Firestore: {article['id']}")
     except Exception as e:
-        print(f"❌ Failed to save article: {e}")
+        print(f"❌ Failed to save article to Firestore: {e}")
 
 # --- פונקציה לשליפת כתבות ---
 def get_articles(article_id=None):
@@ -43,7 +43,8 @@ def get_articles(article_id=None):
             doc = db.collection("articles").document(article_id).get()
             return doc.to_dict() if doc.exists else None
         else:
-            docs = db.collection("articles").order_by("published_at", direction=firestore.Query.DESCENDING).stream()
+            # ✅ התיקון כאן: שינוי מ-published_at ל-pubDate
+            docs = db.collection("articles").order_by("pubDate", direction=firestore.Query.DESCENDING).stream()
             return [doc.to_dict() for doc in docs]
     except Exception as e:
         print(f"❌ Failed to fetch articles: {e}")

@@ -1,107 +1,100 @@
-// components/NewsCard.jsx (קוד מעודכן)
-
 import React from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
-// פונקציית עזר להוצאת מילים ייחודיות של ישויות (עד 4 מילים)
-const getUniqueEntityWords = (nerArr) => {
-    if (!nerArr || !Array.isArray(nerArr)) return [];
-    
-    // אובייקט לשמירת הישויות, מונע כפילויות של מילים
-    const uniqueWords = {}; 
-    
-    nerArr.forEach(item => {
-        // מנקה את המילה וממיר לאותיות קטנות (להימנע מכפילויות כמו "Apple" ו-"apple")
-        const cleanWord = item.word.replace(/##/g, '').trim(); 
-        if (cleanWord && !uniqueWords[cleanWord.toLowerCase()]) {
-             // שומרים את המילה המקורית, סוג הישות והצבע
-             uniqueWords[cleanWord.toLowerCase()] = {
-                 word: cleanWord, 
-                 entity: item.entity,
-                 ...getEntityTagStyle(item.entity)
-             };
-        }
-    });
-
-    // מחזירים מערך של ערכי האובייקט, חותכים ל-4 האלמנטים הראשונים
-    return Object.values(uniqueWords).slice(0, 4);
+// צבעים סולידיים לקטגוריות (במקום גרדיאנטים)
+const CATEGORY_STYLES = {
+  top: "bg-red-100 text-red-800 border-red-200",
+  entertainment: "bg-pink-100 text-pink-800 border-pink-200",
+  education: "bg-blue-100 text-blue-800 border-blue-200",
+  tourism: "bg-teal-100 text-teal-800 border-teal-200",
+  health: "bg-green-100 text-green-800 border-green-200",
+  business: "bg-purple-100 text-purple-800 border-purple-200",
+  politics: "bg-gray-100 text-gray-800 border-gray-200",
+  technology: "bg-indigo-100 text-indigo-800 border-indigo-200",
+  sports: "bg-orange-100 text-orange-800 border-orange-200",
+  science: "bg-cyan-100 text-cyan-800 border-cyan-200"
 };
 
-// פונקציית עזר לתרגום ישויות וצבע (נשארת זהה)
-const getEntityTagStyle = (entity) => {
-    switch (entity) {
-        case 'PER':
-            return { label: 'אדם', color: 'bg-blue-200 text-blue-800' };
-        case 'ORG':
-            return { label: 'ארגון', color: 'bg-red-200 text-red-800' };
-        case 'LOC':
-            return { label: 'מיקום', color: 'bg-teal-200 text-teal-800' };
-        default:
-            return { label: entity, color: 'bg-gray-200 text-gray-700' };
-    }
+// צבעי ישויות נקיים
+const ENTITY_STYLES = {
+  PER: "bg-blue-50 text-blue-700 border-blue-100",
+  ORG: "bg-red-50 text-red-700 border-red-100",
+  LOC: "bg-green-50 text-green-700 border-green-100",
+  MISC: "bg-gray-50 text-gray-700 border-gray-200"
 };
 
-export default function NewsCard({ item }) {
-  
-  // *** שינוי: קורא את המילים הייחודיות ***
-  const entityWords = getUniqueEntityWords(item.ner_arr); 
-  
-  const categoryColor = item.category === "General" ? "bg-gray-500" : "bg-red-500";
-  const categoryTextColor = item.category === "General" ? "text-gray-500" : "text-red-500";
-
+export default function NewsCard({ article }) {
+  const navigate = useNavigate();
+  const categoryStyle = CATEGORY_STYLES[article.category?.toLowerCase()] || "bg-gray-100 text-gray-800 border-gray-200";
 
   return (
-    <Link to={`/article/${item.id}`} className="block h-full">
-        <div className="rtl bg-white rounded-xl shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col h-full overflow-hidden border border-gray-100">
-        
-            {/* ... (חלק התמונה נשאר זהה) ... */}
-            {item.image && (
-                <div className="relative h-48 overflow-hidden">
-                    <img 
-                        src={item.image} 
-                        alt={item.title} 
-                        className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
-                    />
+    <div 
+        onClick={() => navigate(`/article/${article.id}`)} 
+        className="group cursor-pointer bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-md hover:border-gray-300 transition-all duration-200 h-full flex flex-col"
+    >
+        {/* תמונה */}
+        <div className="relative h-48 overflow-hidden bg-gray-100 border-b border-gray-100">
+            {article.image ? (
+                <img 
+                    src={article.image} 
+                    alt={article.title} 
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                    onError={(e) => e.target.src = "https://via.placeholder.com/400x300?text=No+Image"} 
+                />
+            ) : (
+                <div className="flex items-center justify-center h-full text-gray-400 font-bold">
+                    אין תמונה
                 </div>
             )}
             
-            <div className="p-5 flex flex-col flex-grow">
-                <div className="flex justify-between items-start mb-3">
-                    <span 
-                        className={`text-xs font-semibold ${categoryTextColor}`}
-                    >
-                        {item.category}
-                    </span>
-                    <span className="text-xs text-gray-500 whitespace-nowrap">
-                        {item.source}
-                    </span>
-                </div>
-                
-                <h3 className="text-lg font-bold text-gray-900 mb-2 leading-snug">
-                    {item.title}
-                </h3>
-                
-                <p className="text-sm text-gray-600 mb-4 flex-grow line-clamp-3">
-                    {item.description}
-                </p>
-                
-                {/* --- תצוגת מילים מזוהות (החלק המעודכן) --- */}
-                {entityWords.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-2 pt-2 border-t border-gray-100">
-                        {entityWords.map((tagData, index) => (
-                                <span 
-                                    key={index} 
-                                    className={`px-3 py-1 text-xs font-medium rounded-full ${tagData.color}`}
-                                    title={`ישות: ${tagData.label}`}
-                                >
-                                    {tagData.word} {/* *** מציג את המילה *** */}
-                                </span>
-                            ))}
-                    </div>
-                )}
-                
+            {/* תג קטגוריה בתוך התמונה */}
+            <div className="absolute top-3 left-3">
+                <span className={`px-2 py-1 rounded text-xs font-bold uppercase border shadow-sm ${categoryStyle}`}>
+                    {article.category || "כללי"}
+                </span>
             </div>
         </div>
-    </Link>
+
+        {/* תוכן */}
+        <div className="p-5 flex flex-col flex-1">
+            <h3 className="text-lg font-bold text-gray-900 leading-snug mb-3 line-clamp-2 group-hover:text-blue-700 transition-colors">
+                {article.title}
+            </h3>
+
+            {article.description && (
+                <p className="text-sm text-gray-600 mb-4 line-clamp-3 leading-relaxed">
+                    {article.description}
+                </p>
+            )}
+
+            {/* ישויות (NER) */}
+            {article.ner_arr && article.ner_arr.length > 0 && (
+                <div className="mt-auto mb-4">
+                    <div className="flex flex-wrap gap-2">
+                        {article.ner_arr.slice(0, 4).map((entity, idx) => (
+                            <span key={idx} className={`px-2 py-0.5 rounded text-[10px] font-bold border ${ENTITY_STYLES[entity.entity] || ENTITY_STYLES.MISC}`}>
+                                {entity.word}
+                            </span>
+                        ))}
+                        {article.ner_arr.length > 4 && (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-500 border border-gray-200">
+                                +{article.ner_arr.length - 4}
+                            </span>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            <div className="pt-4 mt-auto border-t border-gray-100 flex items-center justify-between text-xs text-gray-500 font-medium">
+                <div className="flex items-center gap-1">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    {article.pubDate ? new Date(article.pubDate).toLocaleDateString("he-IL") : "עכשיו"}
+                </div>
+                <span className="group-hover:translate-x-[-4px] transition-transform text-blue-600 font-bold">
+                    קרא עוד ←
+                </span>
+            </div>
+        </div>
+    </div>
   );
 }

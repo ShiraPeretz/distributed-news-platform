@@ -8,7 +8,11 @@ import threading
 from dotenv import load_dotenv
 from urllib.parse import quote
 import uuid
+import asyncio
 
+# --- חיבור לפיירבייס ---
+# מייבאים את הפונקציות מהקובץ storage_service.py שנמצא באותה תיקייה
+from app.storage_service import save_article_to_firestore, get_articles
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -17,9 +21,6 @@ app = FastAPI(title="Unit 3 - Storage Service", version="1.0.0")
 
 # Kafka Configuration
 KAFKA_BROKER = os.getenv('KAFKA_BROKER', 'kafka:9092')
-
-# In-memory storage (replace with Firebase/DB in production)
-articles_db = {}
 
 # Kafka Producer
 try:
@@ -31,6 +32,8 @@ try:
 except Exception as e:
     logger.error(f"❌ Kafka Producer error: {e}")
     producer = None
+
+# --- פונקציות טיפול בתמונות (ללא שינוי) ---
 
 def get_placeholder_url(word: str, entity_type: str) -> str:
     """Generate placeholder image URL"""
@@ -82,12 +85,18 @@ async def process_images(article: dict) -> dict:
     article['ner_arr'] = ner_arr
     return article
 
+# --- פונקציות שמירה ועיבוד (מעודכנות לפיירבייס) ---
+
 def save_article(article: dict) -> dict:
-    """Save article to storage"""
+    """Save article to Firebase Storage"""
+    # יצירת מזהה ייחודי אם חסר
     article_id = article.get('id') or str(uuid.uuid4())
     article['id'] = article_id
-    articles_db[article_id] = article
-    logger.info(f"💾 Saved article: {article_id}")
+    
+    # שינוי: קריאה לפונקציה ששומרת לפיירבייס במקום למילון
+    save_article_to_firestore(article)
+    
+    logger.info(f"💾 Saved article to Firebase: {article_id}")
     return article
 
 def kafka_consumer_thread():
@@ -102,6 +111,7 @@ def kafka_consumer_thread():
         )
         logger.info("✅ Kafka Consumer started for 'ner-processed'")
         
+        # בלולאה הזו אנחנו משתמשים ב-asyncio בצורה ידנית כי אנחנו בתוך Thread רגיל
         import asyncio
         
         for message in consumer:
@@ -111,9 +121,12 @@ def kafka_consumer_thread():
             # Process images (async operation in sync context)
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            article = loop.run_until_complete(process_images(article))
+            try:
+                article = loop.run_until_complete(process_images(article))
+            finally:
+                loop.close()
             
-            # Save to storage
+            # Save to storage (Firebase)
             article = save_article(article)
             
             # Send final processed article
@@ -126,7 +139,7 @@ def kafka_consumer_thread():
 
 @app.on_event("startup")
 async def startup_event():
-    logger.info("🟢 Starting Unit 3 - Storage Service...")
+    logger.info("🟢 Starting Unit 3 - Storage Service (Firebase Enabled)...")
     
     # Start Kafka consumer in background
     consumer_thread = threading.Thread(target=kafka_consumer_thread, daemon=True)
@@ -134,25 +147,28 @@ async def startup_event():
     
     logger.info("✅ Storage Service started")
 
+# --- Endpoints מעודכנים ---
+
 @app.get("/")
 def read_root():
     return {
         "service": "Unit 3 - Storage Service",
         "status": "running",
-        "articles_count": len(articles_db)
+        "storage_type": "Firebase Firestore"
     }
 
 @app.get("/storage/articles/recent")
 def get_recent_articles(limit: int = 20):
-    """Get recent articles"""
-    articles = list(articles_db.values())
-    articles.reverse()  # Most recent first
+    """Get recent articles from Firebase"""
+    # שינוי: קריאה לפונקציה שמושכת מפיירבייס
+    articles = get_articles() 
     return {"data": articles[:limit]}
 
 @app.get("/storage/articles/{article_id}")
 def get_article(article_id: str):
-    """Get specific article"""
-    article = articles_db.get(article_id)
+    """Get specific article from Firebase"""
+    # שינוי: קריאה לפונקציה שמושכת מפיירבייס לפי ID
+    article = get_articles(article_id)
     if not article:
         raise HTTPException(status_code=404, detail="Article not found")
     return article
@@ -162,5 +178,5 @@ def health_check():
     return {
         "status": "healthy",
         "storage_connected": True,
-        "articles_count": len(articles_db)
+        "mode": "production (firebase)"
     }

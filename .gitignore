@@ -6,3 +6,15 @@ node_modules/
 .idea/
 *.log
 *.swp
+
+# secrets - never commit these
+.env
+.env.*
+!.env.example
+*firebase*key*.json
+*serviceAccount*.json
+*.pem
+*.key
+.DS_Store
+*.txt.bak
+websocket_manager.txt
