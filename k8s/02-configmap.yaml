@@ -1,0 +1,18 @@
+# ---------------------------------------------------------------------------
+# Compose kept configuration inline under `environment:` on every service, which
+# meant the Kafka address was repeated four times. Kubernetes pulls that out
+# into a ConfigMap, and the Deployments reference it with envFrom - so changing
+# the broker address is a one-line edit in one place.
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: news-config
+  namespace: news
+data:
+  # In Compose this was KAFKA_BROKER=kafka:9092. The name still resolves, but now
+  # it is Kubernetes DNS doing the work: "kafka" is a Service in this namespace,
+  # so every pod reaches it as kafka:9092 without knowing any pod IP.
+  KAFKA_BROKER: "kafka:9092"
+  NER_SERVICE_URL: "http://unit2-ner:8002"
+  STORAGE_SERVICE_URL: "http://unit3-storage:8003"

@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-headless
+  namespace: news
+spec:
+  # Headless: no load balancing. Its only job is per-pod DNS records, so that
+  # kafka-0 keeps a name that survives a restart.
+  clusterIP: None
+  selector:
+    app: kafka
+  ports:
+    - name: internal
+      port: 9092
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  namespace: news
+spec:
+  # The stable name clients bootstrap against: kafka:9092
+  selector:
+    app: kafka
+  ports:
+    - name: internal
+      port: 9092
+      targetPort: 9092

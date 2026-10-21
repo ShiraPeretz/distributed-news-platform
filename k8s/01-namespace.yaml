@@ -1,0 +1,7 @@
+# A namespace is just a folder for resources. Everything for this project lives
+# in "news", so `kubectl delete namespace news` tears the whole thing down in one
+# command, and names can't collide with anything else on the cluster.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: news
