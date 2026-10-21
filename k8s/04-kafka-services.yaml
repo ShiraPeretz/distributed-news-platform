@@ -7,6 +7,11 @@ spec:
   # Headless: no load balancing. Its only job is per-pod DNS records, so that
   # kafka-0 keeps a name that survives a restart.
   clusterIP: None
+  # The broker has to resolve its OWN advertised name while it is still starting,
+  # which is by definition before it is Ready. Without this, that DNS record does
+  # not exist yet and the broker cannot finish coming up - so it never becomes
+  # Ready, so the record is never published. This breaks that circle.
+  publishNotReadyAddresses: true
   selector:
     app: kafka
   ports:

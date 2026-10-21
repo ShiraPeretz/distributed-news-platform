@@ -14,21 +14,55 @@ spec:
       labels:
         app: kafka
     spec:
+      # Kubernetes injects a legacy Docker-links environment variable for every
+      # Service in the namespace, into every pod. Because a Service here is named
+      # "kafka", every pod - including this one - receives KAFKA_PORT, which
+      # Kubernetes sets to tcp://<clusterIP>:9092.
+      #
+      # The Confluent image turns every KAFKA_* variable into a server.properties
+      # line, so KAFKA_PORT became `port=tcp://10.96.x.x:9092`. Kafka's `port` is
+      # a deprecated setting expecting a number, got a URL, and the broker exited
+      # with "port is deprecated. Please use KAFKA_ADVERTISED_LISTENERS instead."
+      #
+      # Turning the injection off is the fix. The service name collided with the
+      # image's own configuration prefix.
+      enableServiceLinks: false
       containers:
         - name: kafka
           image: confluentinc/cp-kafka:7.5.0
           ports:
             - containerPort: 9092
-          envFrom:
-            - configMapRef:
-                name: news-config
+          # NOTE: deliberately no envFrom here.
+          # news-config carries KAFKA_BROKER=kafka:9092, which is client config -
+          # it tells the four application services where to connect. The Confluent
+          # image turns every KAFKA_* variable into a server.properties line
+          # (KAFKA_BROKER -> broker=kafka:9092), and `broker` is not a valid Kafka
+          # setting, so the broker refuses to start. The broker gets only its own
+          # configuration, explicitly listed below.
           env:
             - name: KAFKA_BROKER_ID
               value: "1"
             - name: KAFKA_ZOOKEEPER_CONNECT
               value: "zookeeper:2181"
+            # Kubernetes expands $(POD_NAME) in a later env value, so the broker
+            # advertises its own per-pod name rather than a shared one.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            # Must NOT be the "kafka" ClusterIP service. A broker's controller
+            # connects to the broker through its own advertised address, and a
+            # ClusterIP service only routes to endpoints that are already Ready -
+            # which this pod cannot be until that very connection succeeds. The
+            # headless per-pod record points straight at this pod and sidesteps
+            # the load balancer entirely.
+            #
+            # Clients still bootstrap against kafka:9092; Kafka hands them this
+            # address afterwards, and it resolves from any pod in the cluster.
             - name: KAFKA_ADVERTISED_LISTENERS
-              value: "PLAINTEXT://kafka:9092"
+              value: "PLAINTEXT://$(POD_NAME).kafka-headless.news.svc.cluster.local:9092"
+            - name: KAFKA_LISTENERS
+              value: "PLAINTEXT://0.0.0.0:9092"
             - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
               value: "PLAINTEXT:PLAINTEXT"
             - name: KAFKA_INTER_BROKER_LISTENER_NAME
@@ -37,9 +71,24 @@ spec:
               value: "1"
             - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
               value: "true"
+          # Readiness = the broker's listener accepts connections. The previous
+          # probe shelled out to kafka-topics, which starts a fresh JVM on every
+          # check and did not finish inside the 10s timeout, so the pod was marked
+          # unready even once the broker was healthy. A TCP check costs nothing
+          # and tests the thing readiness actually gates: can clients connect.
           readinessProbe:
-            exec:
-              command: ["kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
-            initialDelaySeconds: 30
-            periodSeconds: 15
-            timeoutSeconds: 10
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          # Restart the broker only if the listener dies, and give it a generous
+          # window first - a liveness probe that fires during startup is how a
+          # slow boot turns into a crash loop.
+          livenessProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            failureThreshold: 3

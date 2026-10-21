@@ -43,6 +43,26 @@ This is the same problem the Compose file solved with two advertised listeners,
 one for the Docker network and one for the host — the fix just takes a different
 shape here.
 
+## Two things that broke, and why
+
+Both were collisions between a Kubernetes default and an assumption baked into the
+Confluent image. Neither component was wrong on its own.
+
+**`enableServiceLinks: false`** — Kubernetes injects legacy Docker-links environment
+variables into every pod, one set per Service in the namespace. A Service here is called
+`kafka`, so every pod received `KAFKA_PORT=tcp://<clusterIP>:9092`. The Confluent image
+turns every `KAFKA_*` variable into a `server.properties` line, so that arrived as
+`port=tcp://10.96.x.x:9092` — a deprecated setting handed a URL where it wanted a number.
+The broker exited immediately with *"port is deprecated. Please use
+KAFKA_ADVERTISED_LISTENERS instead."* The service name collided with the image's own
+configuration prefix.
+
+**`publishNotReadyAddresses: true`** on the headless Service — a broker has to resolve its
+own advertised name while it is still starting, which is by definition before it is Ready.
+By default a Service publishes DNS records only for Ready pods, so the record did not exist
+yet, so the broker could not finish starting, so it never became Ready. This flag breaks
+that circle.
+
 ## Not done yet
 
 - Only Zookeeper and Kafka are converted; the four application services are next.
